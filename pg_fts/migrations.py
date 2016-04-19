@@ -17,6 +17,18 @@ __all__ = ('CreateFTSIndexOperation', 'CreateFTSTriggerOperation',
     @author: David Miguel
 """
 
+def rendered_model(from_state, app_label, obj):
+    try:
+        model = from_state.render().get_model(app_label, obj.name)
+    except AttributeError:
+        # django 1.8 doesn't have ProjectState.render()
+        try:
+            model = from_state.models[(app_label, obj.name)]
+        except KeyError:
+            model = from_state.models[(app_label, obj.name.lower())]
+        model = model.render(from_state.apps)
+    return model
+
 
 class PgFtsSQL(object):
     sql_delete_trigger = ("DROP TRIGGER {model}_{fts_name}_update ON \"{model}\";"
@@ -150,7 +162,7 @@ class BaseVectorOperation(Operation):
     def database_forwards(self, app_label, schema_editor, from_state,
                           to_state):
 
-        model = from_state.render().get_model(app_label, self.name)
+        model = rendered_model(from_state, app_label, self)
         vector_field = model._meta.get_field_by_name(self.fts_vector)[0]
         schema_editor.execute(self.forward_fn(
             model,
@@ -160,7 +172,7 @@ class BaseVectorOperation(Operation):
     def database_backwards(self, app_label, schema_editor, from_state,
                            to_state):
 
-        model = from_state.render().get_model(app_label, self.name)
+        model = rendered_model(from_state, app_label, self)
         vector_field = model._meta.get_field_by_name(self.fts_vector)[0]
 
         schema_editor.execute(self.backward_fn(
@@ -280,8 +292,8 @@ class CreateFTSIndexOperation(BaseVectorOperation):
     def database_forwards(self, app_label, schema_editor, from_state,
                           to_state):
         # print(dir(from_state))
-        # django 1.8 doesn't have ProjectState.render()
-        model = from_state.render().get_model(app_label, self.name)
+
+        model = rendered_model(from_state, app_label, self)
         vector_field = model._meta.get_field_by_name(self.fts_vector)[0]
         if not isinstance(vector_field, TSVectorField):
             raise AttributeError
@@ -292,7 +304,7 @@ class CreateFTSIndexOperation(BaseVectorOperation):
     def database_backwards(self, app_label, schema_editor, from_state,
                            to_state):
 
-        model = from_state.render().get_model(app_label, self.name)
+        model = rendered_model(from_state, app_label, self)
         vector_field = model._meta.get_field_by_name(self.fts_vector)[0]
 
         schema_editor.execute(self.sql_creator.delete_index(
@@ -317,7 +329,7 @@ class DeleteFTSIndexOperation(CreateFTSIndexOperation):
 
     def database_forwards(self, app_label, schema_editor, from_state,
                           to_state):
-        model = from_state.render().get_model(app_label, self.name)
+        model = rendered_model(from_state, app_label, self)
         vector_field = model._meta.get_field_by_name(self.fts_vector)[0]
 
         schema_editor.execute(self.sql_creator.delete_index(
